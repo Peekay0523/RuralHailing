@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+
+{% block title %}Request a Ride - Rural Hailing{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map-container {
+        height: 400px;
+        width: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .location-marker {
+        background-color: #007bff;
+        color: white;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .driver-marker {
+        background-color: #28a745;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        cursor: pointer;
+    }
+    .map-controls {
+        margin-bottom: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Request a Ride</h3>
+            </div>
+            <div class="card-body">
+                <div id="map-container"></div>
+
+                <form id="rideRequestForm" method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="pickup_address" class="form-label">Pickup Address</label>
+                            <input type="text" class="form-control" id="pickup_address" name="pickup_address" placeholder="Click map to select pickup" readonly required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="destination_address" class="form-label">Destination Address</label>
+                            <input type="text" class="form-control" id="destination_address" name="destination_address" placeholder="Click map to select destination" readonly required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="pickup_lat" class="form-label">Pickup Latitude</label>
+                            <input type="number" step="any" class="form-control" id="pickup_lat" name="pickup_lat" readonly required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="pickup_lng" class="form-label">Pickup Longitude</label>
+                            <input type="number" step="any" class="form-control" id="pickup_lng" name="pickup_lng" readonly required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="destination_lat" class="form-label">Destination Latitude</label>
+                            <input type="number" step="any" class="form-control" id="destination_lat" name="destination_lat" readonly required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="destination_lng" class="form-label">Destination Longitude</label>
+                            <input type="number" step="any" class="form-control" id="destination_lng" name="destination_lng" readonly required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100" id="requestRideBtn" disabled>Request Ride</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Nearby Drivers</h5>
+            </div>
+            <div class="card-body">
+                <div id="nearby-drivers-list">
+                    <p>Loading nearby drivers...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>How to Use</h5>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Click on the map to select your pickup location</li>
+                    <li>Click again to select your destination</li>
+                    <li>Review the addresses and coordinates</li>
+                    <li>Click "Request Ride" to book your trip</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Initialize the map centered on South Africa
+    const map = L.map('map-container').setView([-29.8587, 31.0218], 10); // Centered on Durban as example
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    let selectedPickup = null;
+    let selectedDestination = null;
+    let pickupMarker = null;
+    let destinationMarker = null;
+
+    // Add some mock drivers to the map
+    const mockDrivers = [
+        { id: 1, name: "John D.", rating: 4.8, car: "Toyota Camry", lat: -29.8587, lng: 31.0218 },
+        { id: 2, name: "Sarah M.", rating: 4.9, car: "Honda Civic", lat: -29.8687, lng: 31.0318 },
+        { id: 3, name: "Mike T.", rating: 4.7, car: "Ford Escape", lat: -29.8487, lng: 31.0118 },
+        { id: 4, name: "Lisa K.", rating: 5.0, car: "Tesla Model 3", lat: -29.8787, lng: 31.0418 }
+    ];
+
+    // Add driver markers to the map
+    mockDrivers.forEach(driver => {
+        const driverIcon = L.divIcon({
+            className: 'driver-marker',
+            html: 'D',
+            iconSize: [20, 20]
+        });
+
+        L.marker([driver.lat, driver.lng], {icon: driverIcon})
+            .addTo(map)
+            .bindPopup(`<b>${driver.name}</b><br>${driver.car}<br>Rating: ${driver.rating}★`);
+    });
+
+    // Handle map click to select locations
+    map.on('click', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
+        // Reverse geocode to get address (using a mock service for demo)
+        const mockAddress = `Near ${lat.toFixed(4)}, ${lng.toFixed(4)}, South Africa`;
+
+        if (!selectedPickup) {
+            // Select pickup point
+            selectedPickup = { lat: lat, lng: lng };
+            document.getElementById('pickup_lat').value = lat.toFixed(6);
+            document.getElementById('pickup_lng').value = lng.toFixed(6);
+            document.getElementById('pickup_address').value = mockAddress;
+
+            // Add marker for pickup
+            if (pickupMarker) {
+                map.removeLayer(pickupMarker);
+            }
+            pickupMarker = L.marker([lat, lng]).addTo(map);
+            pickupMarker.bindPopup("Pickup Location").openPopup();
+
+        } else if (!selectedDestination) {
+            // Select destination point
+            selectedDestination = { lat: lat, lng: lng };
+            document.getElementById('destination_lat').value = lat.toFixed(6);
+            document.getElementById('destination_lng').value = lng.toFixed(6);
+            document.getElementById('destination_address').value = mockAddress;
+
+            // Add marker for destination
+            if (destinationMarker) {
+                map.removeLayer(destinationMarker);
+            }
+            destinationMarker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'location-marker',
+                    html: 'D',
+                    iconSize: [24, 24]
+                })
+            }).addTo(map);
+            destinationMarker.bindPopup("Destination").openPopup();
+
+            // Enable the request button
+            document.getElementById('requestRideBtn').disabled = false;
+        }
+    });
+
+    // Form submission
+    document.getElementById('rideRequestForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        if (!selectedPickup || !selectedDestination) {
+            alert('Please select both pickup and destination locations on the map');
+            return;
+        }
+
+        const formData = new FormData(e.target);
+        const rideData = Object.fromEntries(formData.entries());
+
+        // Remove CSRF token from the data sent to the server
+        delete rideData['csrfmiddlewaretoken'];
+
+        try {
+            const response = await fetch('/api/rides/api/request/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify(rideData)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert('Ride requested successfully!');
+                window.location.href = '{% url 'core:home' %}';
+            } else {
+                const errorData = await response.json();
+                alert('Ride request failed: ' + JSON.stringify(errorData));
+            }
+        } catch (error) {
+            console.error('Ride request error:', error);
+            alert('An error occurred during ride request');
+        }
+    });
+
+    // Load nearby drivers list
+    function loadNearbyDrivers() {
+        const driversList = document.getElementById('nearby-drivers-list');
+        const mockDriversList = [
+            { id: 1, name: "John D.", rating: 4.8, car: "Toyota Camry", distance: "0.5 km" },
+            { id: 2, name: "Sarah M.", rating: 4.9, car: "Honda Civic", distance: "0.8 km" },
+            { id: 3, name: "Mike T.", rating: 4.7, car: "Ford Escape", distance: "1.2 km" },
+            { id: 4, name: "Lisa K.", rating: 5.0, car: "Tesla Model 3", distance: "1.5 km" }
+        ];
+
+        let driversHtml = '';
+        mockDriversList.forEach(driver => {
+            driversHtml += `
+                <div class="driver-card mb-2 p-2 border rounded">
+                    <div class="d-flex justify-content-between">
+                        <strong>${driver.name}</strong>
+                        <span class="badge bg-primary">${driver.rating} ★</span>
+                    </div>
+                    <small class="text-muted">${driver.car}</small>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small>${driver.distance}</small>
+                        <span class="text-success">Available</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        driversList.innerHTML = driversHtml;
+    }
+
+    // Load drivers when page loads
+    loadNearbyDrivers();
+</script>
+{% endblock %}

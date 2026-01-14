@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h2>Welcome to Your Dashboard</h2>
+        <p>Manage your account and view your ride history.</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-taxi fa-3x text-primary mb-3"></i>
+                <h5>Total Rides</h5>
+                <p class="display-4">0</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-wallet fa-3x text-success mb-3"></i>
+                <h5>Spent</h5>
+                <p class="display-4">$0.00</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-star fa-3x text-warning mb-3"></i>
+                <h5>Rating</h5>
+                <p class="display-4">0.0</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <p>You don't have any recent activity yet.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    {% if user.user_type == 'passenger' %}
+                        <a href="{% url 'rides:request-ride' %}" class="btn btn-primary">Book a Ride</a>
+                    {% else %}
+                        <a href="{% url 'drivers:profile' %}" class="btn btn-primary">Manage Profile</a>
+                    {% endif %}
+                    <a href="{% url 'rides:history' %}" class="btn btn-outline-primary">View History</a>
+                    <a href="{% url 'core:notifications' %}" class="btn btn-outline-primary">Notifications</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

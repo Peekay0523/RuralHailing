@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3>Login</h3>
+            </div>
+            <div class="card-body">
+                <form id="loginForm" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+                <div class="mt-3 text-center">
+                    <p>Don't have an account? <a href="{% url 'accounts:register' %}">Register here</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const loginData = Object.fromEntries(formData.entries());
+
+    // Remove CSRF token from the data sent to the server
+    delete loginData['csrfmiddlewaretoken'];
+
+    try {
+        const response = await fetch('/api/accounts/api/login/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(loginData)
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Login successful, redirect to home
+            window.location.href = '{% url 'core:home' %}';
+        } else {
+            const errorData = await response.json();
+            alert('Login failed: ' + errorData.error);
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('An error occurred during login');
+    }
+});
+</script>
+{% endblock %}

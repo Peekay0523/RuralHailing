@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+
+{% block title %}Register - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3>Create an Account</h3>
+            </div>
+            <div class="card-body">
+                <form id="registerForm" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="first_name" class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="first_name" name="first_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="last_name" class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="last_name" name="last_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirm Password</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="user_type" class="form-label">User Type</label>
+                        <select class="form-select" id="user_type" name="user_type" required>
+                            <option value="">Select User Type</option>
+                            <option value="passenger">Passenger</option>
+                            <option value="driver">Driver</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Register</button>
+                </form>
+                <div class="mt-3 text-center">
+                    <p>Already have an account? <a href="{% url 'accounts:login' %}">Login here</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('registerForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const userData = Object.fromEntries(formData.entries());
+
+    // Remove CSRF token from the data sent to the server
+    delete userData['csrfmiddlewaretoken'];
+
+    // Remove confirm_password from the data sent to the server
+    delete userData.confirm_password;
+
+    // Check if passwords match
+    if (userData.password !== formData.get('confirm_password')) {
+        alert('Passwords do not match');
+        return;
+    }
+
+    // Use email as username since the model requires it
+    userData.username = userData.email;
+
+    try {
+        const response = await fetch('/api/accounts/api/register/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(userData)
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Registration successful, redirect to home
+            window.location.href = '{% url 'core:home' %}';
+        } else {
+            const errorData = await response.json();
+            alert('Registration failed: ' + JSON.stringify(errorData));
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        alert('An error occurred during registration');
+    }
+});
+</script>
+{% endblock %}

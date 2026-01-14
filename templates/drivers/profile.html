@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+
+{% block title %}Driver Profile - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <img src="{{ user.profile_picture.url }}" alt="Profile Picture" class="rounded-circle mb-3" width="150" height="150">
+                <h4>{{ user.get_full_name }}</h4>
+                <p class="text-muted">{{ user.email }}</p>
+                
+                <div class="mt-3">
+                    <p><i class="fas fa-id-card"></i> License: {{ driver.license_number }}</p>
+                    <p><i class="fas fa-car"></i> {{ driver.vehicle_make }} {{ driver.vehicle_model }}</p>
+                    <p><i class="fas fa-star"></i> Rating: {{ driver.rating }}/5.0</p>
+                    <p><i class="fas fa-clipboard-list"></i> Total Rides: {{ driver.total_rides }}</p>
+                </div>
+                
+                <div class="mt-3">
+                    <select id="status-selector" class="form-select" onchange="updateDriverStatus()">
+                        <option value="available" {% if driver.status == 'available' %}selected{% endif %}>Available</option>
+                        <option value="on_ride" {% if driver.status == 'on_ride' %}selected{% endif %}>On Ride</option>
+                        <option value="offline" {% if driver.status == 'offline' %}selected{% endif %}>Offline</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Driver Information</h5>
+            </div>
+            <div class="card-body">
+                <form id="driver-profile-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="license-number" class="form-label">License Number</label>
+                                <input type="text" class="form-control" id="license-number" value="{{ driver.license_number }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vehicle-make" class="form-label">Vehicle Make</label>
+                                <input type="text" class="form-control" id="vehicle-make" value="{{ driver.vehicle_make }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vehicle-model" class="form-label">Vehicle Model</label>
+                                <input type="text" class="form-control" id="vehicle-model" value="{{ driver.vehicle_model }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vehicle-year" class="form-label">Vehicle Year</label>
+                                <input type="number" class="form-control" id="vehicle-year" value="{{ driver.vehicle_year }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vehicle-color" class="form-label">Vehicle Color</label>
+                                <input type="text" class="form-control" id="vehicle-color" value="{{ driver.vehicle_color }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="plate-number" class="form-label">Plate Number</label>
+                                <input type="text" class="form-control" id="plate-number" value="{{ driver.vehicle_plate_number }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Update Profile</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>Current Ride</h5>
+            </div>
+            <div class="card-body">
+                <div id="current-ride-info">
+                    <p>Loading current ride information...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Update driver status
+    async function updateDriverStatus() {
+        const status = document.getElementById('status-selector').value;
+        
+        try {
+            const response = await axios.patch('/api/drivers/update-status/', { status: status }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            if (response.data) {
+                // Show success message
+                alert('Status updated successfully!');
+            }
+        } catch (error) {
+            console.error('Error updating status:', error);
+            alert('Error updating status: ' + error.message);
+        }
+    }
+    
+    // Update driver profile
+    document.getElementById('driver-profile-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            license_number: document.getElementById('license-number').value,
+            vehicle_make: document.getElementById('vehicle-make').value,
+            vehicle_model: document.getElementById('vehicle-model').value,
+            vehicle_year: parseInt(document.getElementById('vehicle-year').value),
+            vehicle_color: document.getElementById('vehicle-color').value,
+            vehicle_plate_number: document.getElementById('plate-number').value,
+        };
+        
+        try {
+            const response = await axios.put('/api/drivers/profile/', formData, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            if (response.data) {
+                alert('Profile updated successfully!');
+            }
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert('Error updating profile: ' + error.message);
+        }
+    });
+    
+    // Load current ride information
+    async function loadCurrentRide() {
+        try {
+            const response = await axios.get('/api/rides/current/', {
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            const ride = response.data;
+            if (ride.message) {
+                document.getElementById('current-ride-info').innerHTML = '<p>No active ride</p>';
+            } else {
+                document.getElementById('current-ride-info').innerHTML = `
+                    <p><strong>Ride ID:</strong> ${ride.id}</p>
+                    <p><strong>Status:</strong> ${ride.status}</p>
+                    <p><strong>Pickup:</strong> ${ride.pickup_address}</p>
+                    <p><strong>Destination:</strong> ${ride.destination_address}</p>
+                    <p><strong>Passenger:</strong> ${ride.passenger.first_name} ${ride.passenger.last_name}</p>
+                    <p><strong>Passenger Phone:</strong> ${ride.passenger.phone_number || 'Not provided'}</p>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading current ride:', error);
+            document.getElementById('current-ride-info').innerHTML = '<p>Error loading ride information</p>';
+        }
+    }
+    
+    // Load current ride when page loads
+    window.onload = function() {
+        loadCurrentRide();
+    };
+    
+    // Helper function to get CSRF token from cookies
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}

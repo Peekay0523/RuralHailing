@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="hero-section bg-primary text-white py-5 mb-5 rounded">
+    <div class="container text-center">
+        <h1 class="display-4 fw-bold">Rural Hailing</h1>
+        <p class="lead">Reliable transportation services for rural communities</p>
+        {% if user.is_authenticated %}
+            {% if user.user_type == 'driver' %}
+                <a href="{% url 'drivers:profile' %}" class="btn btn-light btn-lg">Manage Your Profile</a>
+            {% else %}
+                <a href="{% url 'rides:request-ride' %}" class="btn btn-light btn-lg">Book a Ride</a>
+            {% endif %}
+        {% else %}
+            <a href="{% url 'accounts:register' %}" class="btn btn-light btn-lg">Get Started</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="features-section py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">Why Choose Rural Hailing?</h2>
+        <div class="row">
+            <div class="col-md-4 text-center mb-4">
+                <div class="feature-icon bg-primary bg-opacity-10 rounded-circle mx-auto mb-3 p-3">
+                    <i class="fas fa-map-marker-alt fa-2x text-primary"></i>
+                </div>
+                <h4>Wide Coverage</h4>
+                <p>Access to transportation in even the most remote rural areas.</p>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <div class="feature-icon bg-primary bg-opacity-10 rounded-circle mx-auto mb-3 p-3">
+                    <i class="fas fa-shield-alt fa-2x text-primary"></i>
+                </div>
+                <h4>Safety First</h4>
+                <p>Vetted drivers and secure payment options for peace of mind.</p>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <div class="feature-icon bg-primary bg-opacity-10 rounded-circle mx-auto mb-3 p-3">
+                    <i class="fas fa-clock fa-2x text-primary"></i>
+                </div>
+                <h4>24/7 Availability</h4>
+                <p>Round-the-clock service for emergency and planned trips.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats-section bg-light py-5 mb-5">
+    <div class="container">
+        <div class="row text-center">
+            <div class="col-md-3 mb-4">
+                <h2 class="text-primary">1000+</h2>
+                <p class="mb-0">Happy Customers</p>
+            </div>
+            <div class="col-md-3 mb-4">
+                <h2 class="text-primary">50+</h2>
+                <p class="mb-0">Active Drivers</p>
+            </div>
+            <div class="col-md-3 mb-4">
+                <h2 class="text-primary">5000+</h2>
+                <p class="mb-0">Rides Completed</p>
+            </div>
+            <div class="col-md-3 mb-4">
+                <h2 class="text-primary">4.8</h2>
+                <p class="mb-0">Average Rating</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="testimonials-section py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">What Our Users Say</h2>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="card-text">"Rural Hailing has been a lifesaver for my elderly parents who live in a remote area. Reliable and trustworthy service!"</p>
+                        <footer class="blockquote-footer">Sarah Johnson</footer>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="card-text">"As a driver, I appreciate the flexibility and the opportunity to serve my community while earning a living."</p>
+                        <footer class="blockquote-footer">Michael Thompson</footer>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="card-text">"Finally, a transport solution that works in rural areas! The app is easy to use and the drivers are always punctual."</p>
+                        <footer class="blockquote-footer">Emma Rodriguez</footer>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

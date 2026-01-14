@@ -1,0 +1,347 @@
+{% extends 'base.html' %}
+
+{% block title %}Track Ride - Rural Hailing{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #tracking-map {
+        height: 500px;
+        width: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .passenger-marker {
+        background-color: #007bff;
+        color: white;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .driver-marker {
+        background-color: #28a745;
+        color: white;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .route-line {
+        stroke: #ff0000;
+        stroke-width: 4;
+        fill: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Track Your Ride</h3>
+            </div>
+            <div class="card-body">
+                <div id="tracking-map"></div>
+                
+                <div class="ride-info">
+                    <h5>Ride Status: <span id="ride-status" class="text-primary">In Progress</span></h5>
+                    <p>Driver: <span id="driver-name">John D.</span></p>
+                    <p>Vehicle: <span id="vehicle-info">Toyota Camry</span></p>
+                    <p>Estimated Arrival: <span id="eta">5 mins</span></p>
+                    <p>Distance: <span id="distance">2.3 km</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Actions</h5>
+            </div>
+            <div class="card-body">
+                <button id="contact-driver" class="btn btn-primary w-100 mb-2">Contact Driver</button>
+                <button id="cancel-ride" class="btn btn-danger w-100 mb-2">Cancel Ride</button>
+                <button id="end-ride" class="btn btn-success w-100">End Ride</button>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Location Services</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="location-tracking" checked>
+                    <label class="form-check-label" for="location-tracking">
+                        Share my location in real-time
+                    </label>
+                </div>
+                <p class="text-muted small">Allow the app to access your location to track your ride in real-time.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Initialize the map
+    let map = L.map('tracking-map').setView([-29.8587, 31.0218], 13); // Default to South Africa
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Icons for passenger and driver
+    const passengerIcon = L.divIcon({
+        className: 'passenger-marker',
+        html: 'P',
+        iconSize: [24, 24]
+    });
+
+    const driverIcon = L.divIcon({
+        className: 'driver-marker',
+        html: 'D',
+        iconSize: [24, 24]
+    });
+
+    // Initialize positions
+    let passengerPos = [-29.8587, 31.0218]; // Default passenger position
+    let driverPos = [-29.8687, 31.0318];    // Default driver position
+
+    // Add markers
+    let passengerMarker = null;
+    let driverMarker = L.marker(driverPos, {icon: driverIcon}).addTo(map);
+    driverMarker.bindPopup("Driver Location");
+
+    // Function to get user's current location
+    function getUserLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const userLat = position.coords.latitude;
+                const userLng = position.coords.longitude;
+
+                // Update passenger position
+                passengerPos = [userLat, userLng];
+
+                // Remove existing passenger marker if it exists
+                if (passengerMarker) {
+                    map.removeLayer(passengerMarker);
+                }
+
+                // Add new passenger marker
+                passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
+                passengerMarker.bindPopup("Your Location");
+
+                // Center map on user's location
+                map.setView(passengerPos, 15);
+
+                // Update route
+                updateRoute();
+
+                // Start watching position for real-time updates
+                startTracking();
+            }, function(error) {
+                console.error("Geolocation error:", error);
+                alert("Could not access your location. Please enable location services and reload the page.");
+
+                // Use default location if geolocation fails
+                useDefaultLocation();
+            }, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 30000
+            });
+        } else {
+            alert("Geolocation is not supported by your browser. Using default location.");
+            useDefaultLocation();
+        }
+    }
+
+    // Function to use default location
+    function useDefaultLocation() {
+        // Remove existing passenger marker if it exists
+        if (passengerMarker) {
+            map.removeLayer(passengerMarker);
+        }
+
+        // Add passenger marker at default location
+        passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
+        passengerMarker.bindPopup("Your Location");
+
+        // Center map on default location
+        map.setView(passengerPos, 15);
+
+        // Update route
+        updateRoute();
+    }
+
+    // Function to update the route between passenger and driver
+    function updateRoute() {
+        // Remove existing route if it exists
+        if (window.routeLine) {
+            map.removeLayer(window.routeLine);
+        }
+
+        // Draw route between passenger and driver
+        const routePoints = [passengerPos, driverPos];
+        window.routeLine = L.polyline(routePoints, {color: '#ff0000', weight: 4}).addTo(map);
+
+        // Fit map to show both markers
+        const group = new L.featureGroup([passengerMarker, driverMarker]);
+        map.fitBounds(group.getBounds().pad(0.1));
+    }
+
+    // Function to start real-time location tracking
+    function startTracking() {
+        if (navigator.geolocation) {
+            // Watch position for real-time updates
+            window.watchId = navigator.geolocation.watchPosition(function(position) {
+                const userLat = position.coords.latitude;
+                const userLng = position.coords.longitude;
+
+                // Update passenger position
+                passengerPos = [userLat, userLng];
+
+                // Update passenger marker
+                if (passengerMarker) {
+                    passengerMarker.setLatLng(passengerPos);
+                    passengerMarker.bindPopup("Your Location (Live)");
+                } else {
+                    passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
+                    passengerMarker.bindPopup("Your Location (Live)");
+                }
+
+                // Update route
+                updateRoute();
+            }, function(error) {
+                console.error("Real-time tracking error:", error);
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 5000
+            });
+        }
+    }
+
+    // Initialize map with user's location
+    getUserLocation();
+    
+    // Draw route between passenger and driver (mock)
+    const routePoints = [passengerPos, driverPos];
+    const routeLine = L.polyline(routePoints, {color: '#ff0000', weight: 4}).addTo(map);
+    
+    // Function to update positions
+    function updatePositions() {
+        // Simulate movement towards each other
+        const latDiff = (driverPos[0] - passengerPos[0]) * 0.01;
+        const lngDiff = (driverPos[1] - passengerPos[1]) * 0.01;
+        
+        // Move driver towards passenger
+        driverPos[0] -= latDiff;
+        driverPos[1] -= lngDiff;
+        
+        // Update markers
+        driverMarker.setLatLng(driverPos);
+        passengerMarker.setLatLng(passengerPos);
+        
+        // Update route
+        map.removeLayer(routeLine);
+        const newRoutePoints = [passengerPos, driverPos];
+        routeLine = L.polyline(newRoutePoints, {color: '#ff0000', weight: 4}).addTo(map);
+        
+        // Calculate distance and ETA
+        const distance = Math.sqrt(Math.pow(driverPos[0] - passengerPos[0], 2) + Math.pow(driverPos[1] - passengerPos[1], 2)) * 100;
+        document.getElementById('distance').textContent = distance.toFixed(1) + ' km';
+        
+        // Update ETA based on distance
+        const eta = Math.max(1, Math.round(distance * 2)); // Simple calculation
+        document.getElementById('eta').textContent = eta + ' mins';
+        
+        // Check if driver arrived
+        if (distance < 0.1) {
+            document.getElementById('ride-status').textContent = 'Arrived';
+            document.getElementById('ride-status').className = 'text-success';
+        } else if (distance < 0.5) {
+            document.getElementById('ride-status').textContent = 'Approaching';
+            document.getElementById('ride-status').className = 'text-warning';
+        }
+    }
+    
+    // Start tracking simulation
+    setInterval(updatePositions, 2000);
+    
+    // Geolocation functionality
+    function enableLocationTracking() {
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(function(position) {
+                // Update passenger position
+                passengerPos = [position.coords.latitude, position.coords.longitude];
+                
+                // Update marker
+                passengerMarker.setLatLng(passengerPos);
+                
+                // Update route
+                map.removeLayer(routeLine);
+                const newRoutePoints = [passengerPos, driverPos];
+                routeLine = L.polyline(newRoutePoints, {color: '#ff0000', weight: 4}).addTo(map);
+                
+                // Recenter map on passenger
+                map.setView(passengerPos, 15);
+            }, function(error) {
+                console.error("Geolocation error:", error);
+                alert("Could not access your location. Please enable location services.");
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 5000
+            });
+        } else {
+            alert("Geolocation is not supported by your browser.");
+        }
+    }
+    
+    // Check if location tracking is enabled
+    document.getElementById('location-tracking').addEventListener('change', function(e) {
+        if (e.target.checked) {
+            enableLocationTracking();
+        }
+    });
+    
+    // Initialize location tracking if checkbox is checked
+    if (document.getElementById('location-tracking').checked) {
+        enableLocationTracking();
+    }
+    
+    // Button event handlers
+    document.getElementById('contact-driver').addEventListener('click', function() {
+        alert('Calling driver...');
+    });
+    
+    document.getElementById('cancel-ride').addEventListener('click', function() {
+        if (confirm('Are you sure you want to cancel this ride?')) {
+            alert('Ride cancelled.');
+            window.location.href = '{% url 'core:home' %}';
+        }
+    });
+    
+    document.getElementById('end-ride').addEventListener('click', function() {
+        alert('Ride completed successfully!');
+        window.location.href = '{% url 'core:home' %}';
+    });
+</script>
+{% endblock %}

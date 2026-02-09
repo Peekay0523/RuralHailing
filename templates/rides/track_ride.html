@@ -41,6 +41,25 @@
         stroke-width: 4;
         fill: none;
     }
+    .location-debug {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+        font-family: monospace;
+        font-size: 12px;
+    }
+    .bolt-style-location {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        z-index: 1000;
+        font-size: 12px;
+    }
 </style>
 {% endblock %}
 
@@ -53,18 +72,28 @@
             </div>
             <div class="card-body">
                 <div id="tracking-map"></div>
-                
+
                 <div class="ride-info">
                     <h5>Ride Status: <span id="ride-status" class="text-primary">In Progress</span></h5>
-                    <p>Driver: <span id="driver-name">John D.</span></p>
-                    <p>Vehicle: <span id="vehicle-info">Toyota Camry</span></p>
-                    <p>Estimated Arrival: <span id="eta">5 mins</span></p>
-                    <p>Distance: <span id="distance">2.3 km</span></p>
+                    <p>Driver: <span id="driver-name">Loading...</span></p>
+                    <p>Vehicle: <span id="vehicle-info">Loading...</span></p>
+                    <p>Estimated Arrival: <span id="eta">Loading...</span></p>
+                    <p>Distance: <span id="distance">Loading...</span></p>
+                </div>
+
+                <div id="location-debug" class="location-debug" style="display: none;">
+                    <h6>Location Debug Info:</h6>
+                    <p>Passenger Lat: <span id="debug-passenger-lat">-</span></p>
+                    <p>Passenger Lng: <span id="debug-passenger-lng">-</span></p>
+                    <p>Accuracy: <span id="debug-accuracy">-</span> meters</p>
+                    <p>Altitude: <span id="debug-altitude">-</span> meters</p>
+                    <p>Heading: <span id="debug-heading">-</span> degrees</p>
+                    <p>Speed: <span id="debug-speed">-</span> m/s</p>
                 </div>
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card">
             <div class="card-header">
@@ -76,7 +105,7 @@
                 <button id="end-ride" class="btn btn-success w-100">End Ride</button>
             </div>
         </div>
-        
+
         <div class="card mt-3">
             <div class="card-header">
                 <h5>Location Services</h5>
@@ -88,9 +117,22 @@
                         Share my location in real-time
                     </label>
                 </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="show-debug">
+                    <label class="form-check-label" for="show-debug">
+                        Show location debug info
+                    </label>
+                </div>
                 <p class="text-muted small">Allow the app to access your location to track your ride in real-time.</p>
             </div>
         </div>
+    </div>
+
+    <!-- Bolt-style location indicator -->
+    <div id="bolt-location-indicator" class="bolt-style-location" style="display: none;">
+        <div>📍 Live Location: <span id="bolt-lat">-</span>, <span id="bolt-lng">-</span></div>
+        <div>Accuracy: <span id="bolt-accuracy">-</span>m</div>
+        <div>Status: <span id="bolt-status">Inactive</span></div>
     </div>
 </div>
 {% endblock %}
@@ -98,8 +140,8 @@
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Initialize the map
-    let map = L.map('tracking-map').setView([-29.8587, 31.0218], 13); // Default to South Africa
+    // Initialize the map with a default view
+    let map = L.map('tracking-map').setView([0, 0], 13); // Start with world view
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -119,229 +161,758 @@
         iconSize: [24, 24]
     });
 
-    // Initialize positions
-    let passengerPos = [-29.8587, 31.0218]; // Default passenger position
-    let driverPos = [-29.8687, 31.0318];    // Default driver position
+    // Initialize positions as null until we get actual locations
+    let passengerPos = null;
+    let driverPos = null;
 
-    // Add markers
+    // Add markers (will be initialized when we get locations)
     let passengerMarker = null;
-    let driverMarker = L.marker(driverPos, {icon: driverIcon}).addTo(map);
-    driverMarker.bindPopup("Driver Location");
+    let driverMarker = null;
+    let routeLine = null;
 
-    // Function to get user's current location
+    // Background location tracking variables
+    let backgroundTrackingActive = false;
+    let backgroundWatchId = null;
+    let lastKnownLocation = null;
+    let locationUpdateInterval = null;
+
+    // Function to get user's current location with multiple fallback strategies
     function getUserLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(function(position) {
-                const userLat = position.coords.latitude;
-                const userLng = position.coords.longitude;
+        console.log("Attempting to get location...");
 
-                // Update passenger position
-                passengerPos = [userLat, userLng];
+        // Detailed debugging information
+        console.log("Navigator geolocation available:", !!navigator.geolocation);
+        console.log("Platform:", navigator.platform);
+        console.log("User agent:", navigator.userAgent);
+        console.log("On-line:", navigator.onLine);
 
-                // Remove existing passenger marker if it exists
-                if (passengerMarker) {
-                    map.removeLayer(passengerMarker);
-                }
+        // Check if location permissions are granted
+        if (!navigator.geolocation) {
+            console.error("Geolocation is not supported by your browser.");
+            alert("Geolocation is not supported by your browser.");
 
-                // Add new passenger marker
-                passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
-                passengerMarker.bindPopup("Your Location");
-
-                // Center map on user's location
-                map.setView(passengerPos, 15);
-
-                // Update route
-                updateRoute();
-
-                // Start watching position for real-time updates
-                startTracking();
-            }, function(error) {
-                console.error("Geolocation error:", error);
-                alert("Could not access your location. Please enable location services and reload the page.");
-
-                // Use default location if geolocation fails
-                useDefaultLocation();
-            }, {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 30000
-            });
-        } else {
-            alert("Geolocation is not supported by your browser. Using default location.");
-            useDefaultLocation();
+            // Show error in UI
+            document.getElementById('ride-status').textContent = 'Geolocation Not Supported';
+            document.getElementById('ride-status').className = 'text-danger';
+            return;
         }
+
+        // Check permissions status if possible
+        if (navigator.permissions) {
+            navigator.permissions.query({name: 'geolocation'}).then(function(permissionStatus) {
+                console.log("Location permission status:", permissionStatus.state);
+                console.log("Permission descriptor:", permissionStatus);
+
+                if (permissionStatus.state === 'denied') {
+                    alert("Location access has been denied. Please enable location permissions in your browser settings.");
+                } else if (permissionStatus.state === 'prompt') {
+                    console.log("Location permission is in 'prompt' state - user needs to grant permission");
+                }
+            });
+        }
+
+        // First, try with high accuracy but longer timeout
+        const highAccuracyOptions = {
+            enableHighAccuracy: true,
+            timeout: 30000,  // Increase timeout to allow GPS to lock
+            maximumAge: 0
+        };
+
+        console.log("Requesting location with options:", highAccuracyOptions);
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                console.log("Position received:", position);
+                console.log("Timestamp:", new Date(position.timestamp));
+                console.log("Coordinates:", position.coords);
+                console.log("Latitude:", position.coords.latitude);
+                console.log("Longitude:", position.coords.longitude);
+                console.log("Accuracy:", position.coords.accuracy);
+                console.log("Altitude:", position.coords.altitude);
+                console.log("Altitude Accuracy:", position.coords.altitudeAccuracy);
+                console.log("Heading:", position.coords.heading);
+                console.log("Speed:", position.coords.speed);
+
+                // Validate that this is a real location, not a default/fallback
+                if (isValidLocation(position.coords)) {
+                    // Check if the location is accurate enough (less than 100 meters)
+                    if (position.coords.accuracy && position.coords.accuracy < 100) {
+                        console.log("Successfully got accurate location:", position.coords);
+                        updateLocationDisplay(position);
+                    } else {
+                        console.warn("Received inaccurate location (accuracy: " + position.coords.accuracy + "m), waiting for better fix...");
+                        // Show user that we're still trying to get accurate location
+                        document.getElementById('ride-status').textContent = 'Getting accurate location...';
+                        document.getElementById('ride-status').className = 'text-warning';
+
+                        // Wait for a more accurate location using watchPosition
+                        waitForAccurateLocation();
+                    }
+                } else {
+                    console.warn("Received invalid/default location, prompting user...");
+                    // Show user that they need to move to a location with GPS coverage
+                    document.getElementById('ride-status').innerHTML = 'Please move to an area with GPS coverage or enable location services. <br>Current location may be inaccurate.';
+                    document.getElementById('ride-status').className = 'text-warning';
+
+                    // Try again after a short delay
+                    setTimeout(getUserLocation, 10000);
+                }
+            },
+            function(error) {
+                console.error("High accuracy location failed:", error);
+                console.error("Error code:", error.code);
+                console.error("Error message:", error.message);
+
+                // If high accuracy fails, try with network location
+                tryNetworkLocation();
+            },
+            highAccuracyOptions
+        );
     }
 
-    // Function to use default location
-    function useDefaultLocation() {
+    // Function to validate if a location is real (not a default/fallback)
+    function isValidLocation(coords) {
+        // Check if coordinates are at known default locations
+        // Common default locations include: (0,0), or specific coordinates browsers return
+        if ((coords.latitude === 0 && coords.longitude === 0) ||
+            (Math.abs(coords.latitude - (-25.6178)) < 0.01 && Math.abs(coords.longitude - 27.9934) < 0.01)) {
+            console.log("Detected default/fallback location");
+            return false;
+        }
+
+        // Check if accuracy is extremely poor (indicating fallback location)
+        if (coords.accuracy > 40000) { // 40km+ accuracy is usually a fallback
+            console.log("Location has extremely poor accuracy, likely a fallback");
+            return false;
+        }
+
+        // Check if coordinates are within valid ranges
+        if (coords.latitude < -90 || coords.latitude > 90 || coords.longitude < -180 || coords.longitude > 180) {
+            console.log("Coordinates are outside valid ranges");
+            return false;
+        }
+
+        // If all checks pass, consider it valid
+        return true;
+    }
+
+    // Function to wait for an accurate location fix
+    function waitForAccurateLocation() {
+        console.log("Waiting for accurate location fix...");
+
+        // Use watchPosition to keep trying until we get an accurate location
+        const watchOptions = {
+            enableHighAccuracy: true,
+            timeout: 30000,
+            maximumAge: 0
+        };
+
+        const watchId = navigator.geolocation.watchPosition(
+            function(position) {
+                // Check if the location is accurate enough (less than 100 meters)
+                if (position.coords.accuracy && position.coords.accuracy < 100) {
+                    console.log("Got accurate location after waiting:", position.coords);
+                    // Clear the watch since we got an accurate location
+                    navigator.geolocation.clearWatch(watchId);
+                    // Update the display with the accurate location
+                    updateLocationDisplay(position);
+                    // Update status
+                    document.getElementById('ride-status').textContent = 'Accurate location acquired';
+                    document.getElementById('ride-status').className = 'text-success';
+                } else {
+                    console.log("Still waiting for accurate location, current accuracy: " + position.coords.accuracy + "m");
+                }
+            },
+            function(error) {
+                console.error("Error while waiting for accurate location:", error);
+                // Stop watching if there's an error
+                navigator.geolocation.clearWatch(watchId);
+                // Fall back to network location
+                tryNetworkLocation();
+            },
+            watchOptions
+        );
+
+        // Set a timeout to stop watching if we don't get an accurate location within a reasonable time
+        setTimeout(() => {
+            navigator.geolocation.clearWatch(watchId);
+            console.log("Timeout waiting for accurate location, falling back to network location");
+            tryNetworkLocation();
+        }, 60000); // Wait up to 1 minute for accurate location
+    }
+
+    // Function to try network-based location as fallback
+    function tryNetworkLocation() {
+        const networkOptions = {
+            enableHighAccuracy: false,  // Use network location
+            timeout: 10000,
+            maximumAge: 60000  // Allow up to 1 minute old positions
+        };
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                console.log("Using network-based location");
+                updateLocationDisplay(position);
+            },
+            function(error) {
+                console.warn("Network location also failed:", error);
+                // If both fail, try IP-based location as last resort
+                tryIPLocation();
+            },
+            networkOptions
+        );
+    }
+
+    // Function to try IP-based location as last resort
+    function tryIPLocation() {
+        // Use a free IP geolocation service as fallback
+        fetch('https://ipapi.co/json/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.latitude && data.longitude) {
+                    console.log("Using IP-based location as fallback");
+                    // Create a mock position object
+                    const mockPosition = {
+                        coords: {
+                            latitude: data.latitude,
+                            longitude: data.longitude,
+                            accuracy: 10000, // Lower accuracy for IP-based location
+                            altitude: null,
+                            altitudeAccuracy: null,
+                            heading: null,
+                            speed: null
+                        },
+                        timestamp: new Date().getTime()
+                    };
+                    updateLocationDisplay(mockPosition);
+                } else {
+                    throw new Error("IP location service didn't return coordinates");
+                }
+            })
+            .catch(ipError => {
+                console.error("All location methods failed:", ipError);
+                // If all methods fail, show a more helpful message
+                handleLocationError({code: 1, message: "Location access denied or unavailable. Please check browser permissions."});
+            });
+    }
+
+    // Function to update location display with position data
+    function updateLocationDisplay(position) {
+        const coords = position.coords;
+        const userLat = coords.latitude;
+        const userLng = coords.longitude;
+
+        // Update passenger position with actual location
+        passengerPos = [userLat, userLng];
+        lastKnownLocation = { lat: userLat, lng: userLng, timestamp: new Date() };
+
+        // Update debug information if enabled
+        updateDebugInfo(coords);
+
+        // Update bolt-style indicator
+        updateBoltIndicator(coords);
+
         // Remove existing passenger marker if it exists
         if (passengerMarker) {
             map.removeLayer(passengerMarker);
         }
 
-        // Add passenger marker at default location
+        // Add new passenger marker at actual location
         passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
-        passengerMarker.bindPopup("Your Location");
+        passengerMarker.bindPopup(`Your Location<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`).openPopup();
 
-        // Center map on default location
+        // Center map on user's actual location
         map.setView(passengerPos, 15);
 
-        // Update route
-        updateRoute();
-    }
-
-    // Function to update the route between passenger and driver
-    function updateRoute() {
-        // Remove existing route if it exists
-        if (window.routeLine) {
-            map.removeLayer(window.routeLine);
+        // Update route if driver location is available
+        if (driverPos) {
+            updateRoute();
         }
 
-        // Draw route between passenger and driver
-        const routePoints = [passengerPos, driverPos];
-        window.routeLine = L.polyline(routePoints, {color: '#ff0000', weight: 4}).addTo(map);
+        // Start watching position for real-time updates
+        startTracking();
 
-        // Fit map to show both markers
-        const group = new L.featureGroup([passengerMarker, driverMarker]);
-        map.fitBounds(group.getBounds().pad(0.1));
+        // Update status to show location is being tracked
+        document.getElementById('ride-status').textContent = 'Tracking Location';
+        document.getElementById('ride-status').className = 'text-info';
+    }
+
+    // Function to update bolt-style location indicator
+    function updateBoltIndicator(coords) {
+        document.getElementById('bolt-lat').textContent = coords.latitude.toFixed(6);
+        document.getElementById('bolt-lng').textContent = coords.longitude.toFixed(6);
+        document.getElementById('bolt-accuracy').textContent = coords.accuracy ? coords.accuracy.toFixed(2) : 'N/A';
+        document.getElementById('bolt-status').textContent = 'Active';
+        document.getElementById('bolt-location-indicator').style.display = 'block';
+    }
+
+    // Function to update debug information
+    function updateDebugInfo(coords) {
+        if (document.getElementById('show-debug').checked) {
+            document.getElementById('debug-passenger-lat').textContent = coords.latitude.toFixed(6);
+            document.getElementById('debug-passenger-lng').textContent = coords.longitude.toFixed(6);
+            document.getElementById('debug-accuracy').textContent = coords.accuracy ? coords.accuracy.toFixed(2) : 'N/A';
+            document.getElementById('debug-altitude').textContent = coords.altitude ? coords.altitude.toFixed(2) : 'N/A';
+            document.getElementById('debug-heading').textContent = coords.heading ? coords.heading.toFixed(2) : 'N/A';
+            document.getElementById('debug-speed').textContent = coords.speed ? coords.speed.toFixed(2) : 'N/A';
+        }
+    }
+
+    // Function to handle location errors
+    function handleLocationError(error) {
+        let errorMessage = '';
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                errorMessage = "Location access denied by user.";
+                break;
+            case error.POSITION_UNAVAILABLE:
+                errorMessage = "Location information is unavailable.";
+                break;
+            case error.TIMEOUT:
+                errorMessage = "The request to get location timed out.";
+                break;
+            case error.UNKNOWN_ERROR:
+                errorMessage = "An unknown error occurred.";
+                break;
+        }
+
+        console.error("Geolocation error:", error, errorMessage);
+        alert("Could not access your location: " + errorMessage + " Please ensure location services are enabled and permissions are granted.");
+
+        // Hide bolt indicator on error
+        document.getElementById('bolt-status').textContent = 'Error';
+        document.getElementById('bolt-location-indicator').style.display = 'block';
+
+        // Show error in UI
+        document.getElementById('ride-status').textContent = 'Location Access Denied';
+        document.getElementById('ride-status').className = 'text-danger';
     }
 
     // Function to start real-time location tracking
     function startTracking() {
         if (navigator.geolocation) {
-            // Watch position for real-time updates
-            window.watchId = navigator.geolocation.watchPosition(function(position) {
-                const userLat = position.coords.latitude;
-                const userLng = position.coords.longitude;
+            // Clear any existing watch
+            if (window.watchId) {
+                navigator.geolocation.clearWatch(window.watchId);
+            }
 
-                // Update passenger position
-                passengerPos = [userLat, userLng];
+            // Watch position for real-time updates with adaptive accuracy
+            const options = {
+                enableHighAccuracy: true,  // Use GPS if available
+                maximumAge: 0,             // Don't use cached position
+                timeout: 30000             // Longer timeout to allow GPS to lock
+            };
 
-                // Update passenger marker
-                if (passengerMarker) {
-                    passengerMarker.setLatLng(passengerPos);
-                    passengerMarker.bindPopup("Your Location (Live)");
+            window.watchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    const coords = position.coords;
+                    const userLat = coords.latitude;
+                    const userLng = coords.longitude;
+
+                    // Update passenger position with actual location
+                    passengerPos = [userLat, userLng];
+                    lastKnownLocation = { lat: userLat, lng: userLng, timestamp: new Date() };
+
+                    // Update debug information if enabled
+                    updateDebugInfo(coords);
+
+                    // Update bolt-style indicator
+                    updateBoltIndicator(coords);
+
+                    // Update passenger marker
+                    if (passengerMarker) {
+                        passengerMarker.setLatLng(passengerPos);
+                        passengerMarker.bindPopup(`Your Location (Live)<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`);
+                    } else {
+                        passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
+                        passengerMarker.bindPopup(`Your Location (Live)<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`);
+                    }
+
+                    // Update route if driver location is available
+                    if (driverPos) {
+                        updateRoute();
+                    }
+
+                    // Update distance calculation if possible
+                    if (driverPos) {
+                        updateDistance();
+                    }
+
+                    // Send location to server for background tracking
+                    sendLocationToServer(userLat, userLng, coords.accuracy);
+
+                    console.log(`Location updated: ${userLat}, ${userLng}, accuracy: ${coords.accuracy}m`);
+                },
+                function(error) {
+                    console.warn("Real-time tracking error:", error);
+
+                    // Adjust strategy based on error type
+                    if (error.code === 3) { // TIMEOUT
+                        console.log("GPS timeout detected, trying with lower accuracy settings");
+                        // Try again with less strict settings
+                        const fallbackOptions = {
+                            enableHighAccuracy: false,  // Don't require GPS
+                            maximumAge: 30000,          // Allow positions up to 30 seconds old
+                            timeout: 15000              // Medium timeout
+                        };
+
+                        navigator.geolocation.getCurrentPosition(
+                            function(position) {
+                                const coords = position.coords;
+                                const userLat = coords.latitude;
+                                const userLng = coords.longitude;
+
+                                // Update passenger position with location (even if less accurate)
+                                passengerPos = [userLat, userLng];
+                                lastKnownLocation = { lat: userLat, lng: userLng, timestamp: new Date() };
+
+                                // Update debug information if enabled
+                                updateDebugInfo(coords);
+
+                                // Update bolt-style indicator
+                                updateBoltIndicator(coords);
+
+                                // Update passenger marker
+                                if (passengerMarker) {
+                                    passengerMarker.setLatLng(passengerPos);
+                                    passengerMarker.bindPopup(`Your Location (Live)<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`);
+                                } else {
+                                    passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
+                                    passengerMarker.bindPopup(`Your Location (Live)<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`);
+                                }
+
+                                console.log(`Fallback location updated: ${userLat}, ${userLng}, accuracy: ${coords.accuracy}m`);
+
+                                // Restart normal tracking after successful fallback
+                                setTimeout(startTracking, 10000);
+                            },
+                            function(fallbackError) {
+                                console.error("Fallback location also failed:", fallbackError);
+                                // Retry with original settings after a delay
+                                setTimeout(() => {
+                                    if (document.getElementById('location-tracking').checked) {
+                                        startTracking();
+                                    }
+                                }, 10000);
+                            },
+                            fallbackOptions
+                        );
+                    } else {
+                        // For other errors, retry after delay
+                        setTimeout(() => {
+                            if (document.getElementById('location-tracking').checked) {
+                                startTracking();
+                            }
+                        }, 10000);
+                    }
+                },
+                options
+            );
+
+            // Start background tracking
+            startBackgroundTracking();
+        }
+    }
+
+    // Function to start background location tracking (similar to Bolt)
+    function startBackgroundTracking() {
+        backgroundTrackingActive = true;
+
+        // Set up periodic location updates even when tab is not focused
+        locationUpdateInterval = setInterval(() => {
+            if (backgroundTrackingActive && navigator.geolocation) {
+                // Get current position without necessarily moving the map
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const coords = position.coords;
+                        const userLat = coords.latitude;
+                        const userLng = coords.longitude;
+
+                        // Only update if we have good accuracy (less than 100 meters)
+                        if (coords.accuracy && coords.accuracy < 100) {
+                            // Update our stored location
+                            passengerPos = [userLat, userLng];
+                            lastKnownLocation = { lat: userLat, lng: userLng, timestamp: new Date() };
+
+                            // Update bolt indicator
+                            updateBoltIndicator(coords);
+
+                            // Update passenger marker if it exists
+                            if (passengerMarker) {
+                                passengerMarker.setLatLng(passengerPos);
+                                passengerMarker.bindPopup(`Your Location (Live)<br>Lat: ${userLat.toFixed(6)}<br>Lng: ${userLng.toFixed(6)}`);
+                            }
+
+                            // Send to server
+                            sendLocationToServer(userLat, userLng, coords.accuracy);
+
+                            console.log(`Background location updated: ${userLat}, ${userLng}, accuracy: ${coords.accuracy}m`);
+                        } else {
+                            console.log(`Low accuracy location ignored: ${coords.accuracy}m`);
+                        }
+                    },
+                    function(error) {
+                        console.warn("Background location update failed:", error);
+
+                        // Try to restart tracking if it failed
+                        if (document.getElementById('location-tracking').checked) {
+                            startTracking();
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,      // Longer timeout to allow GPS to lock
+                        maximumAge: 0       // No cached positions
+                    }
+                );
+            }
+        }, 8000); // Update every 8 seconds in background (slightly less frequent to allow GPS lock)
+    }
+
+    // Function to stop background tracking
+    function stopBackgroundTracking() {
+        backgroundTrackingActive = false;
+        if (locationUpdateInterval) {
+            clearInterval(locationUpdateInterval);
+            locationUpdateInterval = null;
+        }
+    }
+
+    // Function to send location to server for background tracking
+    function sendLocationToServer(lat, lng, accuracy) {
+        // This would typically send the location to your backend server
+        console.log(`Sending location to server: ${lat}, ${lng}, accuracy: ${accuracy}m`);
+
+        // In a real app, you would make an API call like:
+        /*
+        fetch('/api/rides/update-location/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lng,
+                accuracy: accuracy,
+                timestamp: new Date().toISOString(),
+                ride_id: getCurrentRideId()  // Would need to get current ride ID
+            })
+        })
+        .then(response => response.json())
+        .then(data => console.log('Location updated:', data))
+        .catch(error => console.error('Error sending location:', error));
+        */
+    }
+
+    // Function to get current ride ID (placeholder)
+    function getCurrentRideId() {
+        // In a real implementation, this would return the current ride ID
+        return 'current_ride_id'; // Placeholder
+    }
+
+    // Function to update the route between passenger and driver
+    function updateRoute() {
+        // Remove existing route if it exists
+        if (routeLine) {
+            map.removeLayer(routeLine);
+        }
+
+        // Only draw route if both positions are available
+        if (passengerPos && driverPos) {
+            // Draw route between passenger and driver
+            const routePoints = [passengerPos, driverPos];
+            routeLine = L.polyline(routePoints, {color: '#ff0000', weight: 4}).addTo(map);
+
+            // Fit map to show both markers
+            const group = new L.featureGroup([passengerMarker, driverMarker]);
+            map.fitBounds(group.getBounds().pad(0.1));
+        }
+    }
+
+    // Function to update distance and ETA
+    function updateDistance() {
+        if (passengerPos && driverPos) {
+            // Calculate distance using Haversine formula
+            const R = 6371; // Earth radius in km
+            const dLat = (driverPos[0] - passengerPos[0]) * Math.PI / 180;
+            const dLon = (driverPos[1] - passengerPos[1]) * Math.PI / 180;
+            const a =
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(passengerPos[0] * Math.PI / 180) *
+                Math.cos(driverPos[0] * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c; // Distance in km
+
+            document.getElementById('distance').textContent = distance.toFixed(2) + ' km';
+
+            // Update ETA based on distance (simple calculation)
+            const eta = Math.max(1, Math.round(distance * 3)); // Assume ~3 mins per km
+            document.getElementById('eta').textContent = eta + ' mins';
+        }
+    }
+
+    // Function to fetch ride details and driver location
+    function fetchRideDetails() {
+        // This would typically be an API call to get the current ride details
+        // For now, simulating with a mock API call
+        fetch('/api/rides/current/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.id) {
+                    // Update ride information
+                    document.getElementById('ride-status').textContent = data.status;
+                    document.getElementById('ride-status').className = getStatusClass(data.status);
+
+                    // Update driver info if available
+                    if (data.driver) {
+                        document.getElementById('driver-name').textContent =
+                            data.driver.user.first_name + ' ' + data.driver.user.last_name || data.driver.user.username;
+                        document.getElementById('vehicle-info').textContent =
+                            data.driver.vehicle ? `${data.driver.vehicle.make} ${data.driver.vehicle.model}` : 'Information pending';
+
+                        // Update driver position if available
+                        if (data.driver.location_lat && data.driver.location_lng) {
+                            driverPos = [parseFloat(data.driver.location_lat), parseFloat(data.driver.location_lng)];
+
+                            // Remove existing driver marker if it exists
+                            if (driverMarker) {
+                                map.removeLayer(driverMarker);
+                            }
+
+                            // Add new driver marker at actual location
+                            driverMarker = L.marker(driverPos, {icon: driverIcon}).addTo(map);
+                            driverMarker.bindPopup(`Driver Location<br>Lat: ${driverPos[0].toFixed(6)}<br>Lng: ${driverPos[1].toFixed(6)}`);
+
+                            // Update route if passenger location is available
+                            if (passengerPos) {
+                                updateRoute();
+                                updateDistance();
+                            }
+                        }
+                    }
                 } else {
-                    passengerMarker = L.marker(passengerPos, {icon: passengerIcon}).addTo(map);
-                    passengerMarker.bindPopup("Your Location (Live)");
+                    document.getElementById('ride-status').textContent = 'No Active Ride';
+                    document.getElementById('ride-status').className = 'text-warning';
                 }
+            })
+            .catch(error => {
+                console.error('Error fetching ride details:', error);
+                // Fallback: try to simulate driver location for demo purposes
+                setTimeout(() => {
+                    // Simulate a driver location near the user
+                    if (passengerPos) {
+                        // Generate a nearby location for the driver
+                        const latOffset = (Math.random() - 0.5) * 0.01; // ~1km range
+                        const lngOffset = (Math.random() - 0.5) * 0.01; // ~1km range
+                        driverPos = [passengerPos[0] + latOffset, passengerPos[1] + lngOffset];
 
-                // Update route
-                updateRoute();
-            }, function(error) {
-                console.error("Real-time tracking error:", error);
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000
+                        // Add driver marker
+                        if (driverMarker) {
+                            map.removeLayer(driverMarker);
+                        }
+                        driverMarker = L.marker(driverPos, {icon: driverIcon}).addTo(map);
+                        driverMarker.bindPopup(`Driver Location (Simulated)<br>Lat: ${driverPos[0].toFixed(6)}<br>Lng: ${driverPos[1].toFixed(6)}`);
+
+                        // Update route
+                        if (passengerPos) {
+                            updateRoute();
+                            updateDistance();
+                        }
+                    }
+                }, 2000);
             });
+    }
+
+    // Helper function to get status class
+    function getStatusClass(status) {
+        switch(status) {
+            case 'requested':
+            case 'accepted':
+                return 'text-warning';
+            case 'picked_up':
+            case 'in_transit':
+                return 'text-primary';
+            case 'completed':
+                return 'text-success';
+            case 'cancelled':
+                return 'text-danger';
+            default:
+                return 'text-info';
         }
     }
 
-    // Initialize map with user's location
+    // Initialize map with user's actual location
     getUserLocation();
-    
-    // Draw route between passenger and driver (mock)
-    const routePoints = [passengerPos, driverPos];
-    const routeLine = L.polyline(routePoints, {color: '#ff0000', weight: 4}).addTo(map);
-    
-    // Function to update positions
-    function updatePositions() {
-        // Simulate movement towards each other
-        const latDiff = (driverPos[0] - passengerPos[0]) * 0.01;
-        const lngDiff = (driverPos[1] - passengerPos[1]) * 0.01;
-        
-        // Move driver towards passenger
-        driverPos[0] -= latDiff;
-        driverPos[1] -= lngDiff;
-        
-        // Update markers
-        driverMarker.setLatLng(driverPos);
-        passengerMarker.setLatLng(passengerPos);
-        
-        // Update route
-        map.removeLayer(routeLine);
-        const newRoutePoints = [passengerPos, driverPos];
-        routeLine = L.polyline(newRoutePoints, {color: '#ff0000', weight: 4}).addTo(map);
-        
-        // Calculate distance and ETA
-        const distance = Math.sqrt(Math.pow(driverPos[0] - passengerPos[0], 2) + Math.pow(driverPos[1] - passengerPos[1], 2)) * 100;
-        document.getElementById('distance').textContent = distance.toFixed(1) + ' km';
-        
-        // Update ETA based on distance
-        const eta = Math.max(1, Math.round(distance * 2)); // Simple calculation
-        document.getElementById('eta').textContent = eta + ' mins';
-        
-        // Check if driver arrived
-        if (distance < 0.1) {
-            document.getElementById('ride-status').textContent = 'Arrived';
-            document.getElementById('ride-status').className = 'text-success';
-        } else if (distance < 0.5) {
-            document.getElementById('ride-status').textContent = 'Approaching';
-            document.getElementById('ride-status').className = 'text-warning';
-        }
-    }
-    
-    // Start tracking simulation
-    setInterval(updatePositions, 2000);
-    
-    // Geolocation functionality
-    function enableLocationTracking() {
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(function(position) {
-                // Update passenger position
-                passengerPos = [position.coords.latitude, position.coords.longitude];
-                
-                // Update marker
-                passengerMarker.setLatLng(passengerPos);
-                
-                // Update route
-                map.removeLayer(routeLine);
-                const newRoutePoints = [passengerPos, driverPos];
-                routeLine = L.polyline(newRoutePoints, {color: '#ff0000', weight: 4}).addTo(map);
-                
-                // Recenter map on passenger
-                map.setView(passengerPos, 15);
-            }, function(error) {
-                console.error("Geolocation error:", error);
-                alert("Could not access your location. Please enable location services.");
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000
-            });
-        } else {
-            alert("Geolocation is not supported by your browser.");
-        }
-    }
-    
-    // Check if location tracking is enabled
+
+    // Fetch ride details after getting location
+    setTimeout(fetchRideDetails, 1000);
+
+    // Location tracking checkbox handler
     document.getElementById('location-tracking').addEventListener('change', function(e) {
         if (e.target.checked) {
-            enableLocationTracking();
+            startTracking();
+        } else {
+            if (window.watchId) {
+                navigator.geolocation.clearWatch(window.watchId);
+                window.watchId = null;
+            }
+            stopBackgroundTracking();
         }
     });
-    
-    // Initialize location tracking if checkbox is checked
-    if (document.getElementById('location-tracking').checked) {
-        enableLocationTracking();
-    }
-    
+
+    // Debug info toggle
+    document.getElementById('show-debug').addEventListener('change', function(e) {
+        const debugDiv = document.getElementById('location-debug');
+        if (e.target.checked) {
+            debugDiv.style.display = 'block';
+            if (passengerPos && navigator.geolocation) {
+                // Refresh debug info
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        updateDebugInfo(position.coords);
+                    },
+                    function(error) {
+                        console.error("Could not refresh debug info:", error);
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            }
+        } else {
+            debugDiv.style.display = 'none';
+        }
+    });
+
     // Button event handlers
     document.getElementById('contact-driver').addEventListener('click', function() {
         alert('Calling driver...');
     });
-    
+
     document.getElementById('cancel-ride').addEventListener('click', function() {
         if (confirm('Are you sure you want to cancel this ride?')) {
             alert('Ride cancelled.');
             window.location.href = '{% url 'core:home' %}';
         }
     });
-    
+
     document.getElementById('end-ride').addEventListener('click', function() {
         alert('Ride completed successfully!');
         window.location.href = '{% url 'core:home' %}';
+    });
+
+    // Handle page visibility changes to maintain location tracking
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            // Page is hidden, continue background tracking
+            console.log('Page hidden, continuing background location tracking');
+        } else {
+            // Page is visible again, ensure tracking is active
+            console.log('Page visible, ensuring location tracking is active');
+            if (document.getElementById('location-tracking').checked) {
+                startTracking();
+            }
+        }
     });
 </script>
 {% endblock %}

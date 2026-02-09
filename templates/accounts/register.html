@@ -40,6 +40,12 @@
                             <option value="driver">Driver</option>
                         </select>
                     </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="tracking_consent" name="tracking_consent" required>
+                        <label class="form-check-label" for="tracking_consent">
+                            I agree to allow this application to track my usage for improving services and providing personalized experiences. <a href="{% url 'core:privacy_policy' %}" target="_blank">Learn more</a>
+                        </label>
+                    </div>
                     <button type="submit" class="btn btn-primary w-100">Register</button>
                 </form>
                 <div class="mt-3 text-center">
@@ -71,6 +77,9 @@ document.getElementById('registerForm').addEventListener('submit', async functio
 
     // Use email as username since the model requires it
     userData.username = userData.email;
+
+    // Handle tracking consent
+    userData.tracking_consent = document.getElementById('tracking_consent').checked;
 
     try {
         const response = await fetch('/api/accounts/api/register/', {

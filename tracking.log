@@ -1,0 +1,7 @@
+User testuser@gmail.com accessed POST /api/core/update-tracking-preferences/ at 2026-02-09 10:22:25.854756+00:00
+User testuser@gmail.com accessed POST /api/accounts/api/login/ at 2026-02-09 10:24:10.836198+00:00
+User testuser@gmail.com accessed GET /api/core/ at 2026-02-09 10:24:11.392135+00:00
+User testuser@gmail.com accessed GET /api/rides/request/ at 2026-02-09 10:24:14.557760+00:00
+User testuser@gmail.com accessed GET /api/drivers/nearby/ at 2026-02-09 10:24:15.966843+00:00
+User testuser@gmail.com accessed GET / at 2026-02-09 10:27:08.376163+00:00
+User testuser@gmail.com accessed GET /api/core/ at 2026-02-09 10:27:08.451647+00:00

@@ -7,11 +7,8 @@ from rest_framework import generics, viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
-from django.contrib.auth import get_user_model
 from .models import User
-from .serializers import UserSerializer
-
-User = get_user_model()
+from .serializers import UserSerializer, RegisterSerializer
 
 # HTML Views for browser access
 class RegisterHTMLView(View):
@@ -27,7 +24,7 @@ class LoginHTMLView(View):
 # API Views for API access
 class RegisterAPIView(generics.CreateAPIView):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
     def create(self, request, *args, **kwargs):
@@ -36,6 +33,7 @@ class RegisterAPIView(generics.CreateAPIView):
         user = serializer.save()
 
         # Automatically log in the user after registration
+        user.backend = 'accounts.authentication.EmailBackend'
         django_login(request, user)
 
         return Response(
@@ -51,9 +49,11 @@ class LoginAPIView(APIView):
         password = request.data.get('password')
 
         if email and password:
+            # Since email is the USERNAME_FIELD, authenticate with email
             user = authenticate(request, username=email, password=password)
 
             if user:
+                user.backend = 'accounts.authentication.EmailBackend'
                 django_login(request, user)
                 return Response(UserSerializer(user).data)
             else:
@@ -73,17 +73,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        
+
         # Automatically log in the user after registration
+        user.backend = 'accounts.authentication.EmailBackend'
         django_login(request, user)
-        
+
         return Response(
             UserSerializer(user).data,
             status=status.HTTP_201_CREATED
@@ -95,11 +96,13 @@ class LoginView(APIView):
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
-        
+
         if email and password:
+            # Since email is the USERNAME_FIELD, authenticate with email
             user = authenticate(request, username=email, password=password)
-            
+
             if user:
+                user.backend = 'accounts.authentication.EmailBackend'
                 django_login(request, user)
                 return Response(UserSerializer(user).data)
             else:

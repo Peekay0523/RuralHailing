@@ -9,7 +9,7 @@
         <p class="lead">Reliable transportation services for rural communities</p>
         {% if user.is_authenticated %}
             {% if user.user_type == 'driver' %}
-                <a href="{% url 'drivers:profile' %}" class="btn btn-light btn-lg">Manage Your Profile</a>
+                <a href="{% url 'drivers:driver-profile' %}" class="btn btn-light btn-lg">Manage Your Profile</a>
             {% else %}
                 <a href="{% url 'rides:request-ride' %}" class="btn btn-light btn-lg">Book a Ride</a>
             {% endif %}

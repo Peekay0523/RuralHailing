@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-i+%g6!=(to*z$_xo7is)$qlm^6+i_0wg1wxb&l&*er7^_oh0xv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'nonenticingly-unicolor-anson.ngrok-free.dev',
+    'localhost',
+    '127.0.0.1',
+]
 
 
 # Application definition
@@ -53,6 +57,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.tracking_middleware.TrackingConsentMiddleware',  # Tracking consent middleware (after auth)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -162,8 +167,38 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    'accounts.authentication.EmailBackend',  # Custom email authentication
+    'django.contrib.auth.backends.ModelBackend',  # Default authentication
+]
+
 # Custom user model
 AUTH_USER_MODEL = 'accounts.User'
 
 # Email backend (for development)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Logging configuration for tracking
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'tracking.log',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'tracking': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}

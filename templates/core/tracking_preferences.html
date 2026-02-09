@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+
+{% block title %}Tracking Preferences - Rural Hailing{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tracking Preferences</h2>
+                </div>
+                <div class="card-body">
+                    <p>Manage your consent for data tracking and analytics.</p>
+                    
+                    <div class="form-check form-switch mb-4">
+                        <input class="form-check-input" type="checkbox" id="trackingToggle" {% if user.tracking_consent_given %}checked{% endif %}>
+                        <label class="form-check-label" for="trackingToggle">
+                            Allow tracking for improved service
+                        </label>
+                    </div>
+                    
+                    <div id="consentDetails" class="alert alert-info">
+                        {% if user.tracking_consent_given %}
+                            <p><strong>Tracking is enabled.</strong></p>
+                            <p>You consented to tracking on {{ user.tracking_consent_date|date:"F d, Y \a\t g:i A" }}.</p>
+                        {% else %}
+                            <p><strong>Tracking is disabled.</strong></p>
+                            <p>You have not consented to tracking. Some features may be limited.</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h5>What we track when enabled:</h5>
+                        <ul>
+                            <li>App usage patterns</li>
+                            <li>Feature engagement</li>
+                            <li>Error reports</li>
+                            <li>Performance metrics</li>
+                        </ul>
+                        <p>All data is used solely to improve our service and is never shared with third parties without your consent.</p>
+                    </div>
+                    
+                    <a href="{% url 'core:privacy_policy' %}" class="btn btn-outline-secondary">View Privacy Policy</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const trackingToggle = document.getElementById('trackingToggle');
+    const consentDetails = document.getElementById('consentDetails');
+    
+    trackingToggle.addEventListener('change', function() {
+        // Update tracking preference via API
+        fetch('{% url 'core:update_tracking_preferences' %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                'tracking_consent': this.checked
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the consent details section
+                if (this.checked) {
+                    consentDetails.innerHTML = `
+                        <p><strong>Tracking is enabled.</strong></p>
+                        <p>You consented to tracking just now.</p>
+                    `;
+                } else {
+                    consentDetails.innerHTML = `
+                        <p><strong>Tracking is disabled.</strong></p>
+                        <p>You have not consented to tracking. Some features may be limited.</p>
+                    `;
+                }
+                
+                // Show success message
+                showMessage(data.message, 'success');
+            } else {
+                // Revert the toggle if there was an error
+                this.checked = !this.checked;
+                showMessage(data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            // Revert the toggle if there was an error
+            this.checked = !this.checked;
+            showMessage('Error updating preferences', 'danger');
+            console.error('Error:', error);
+        });
+    });
+    
+    function showMessage(message, type) {
+        // Remove any existing messages
+        const existingAlert = document.querySelector('.alert-message');
+        if (existingAlert) {
+            existingAlert.remove();
+        }
+        
+        // Create new alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-message mt-3`;
+        alertDiv.textContent = message;
+        
+        // Insert after the card body
+        document.querySelector('.card-body').appendChild(alertDiv);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+});
+</script>
+{% endblock %}
